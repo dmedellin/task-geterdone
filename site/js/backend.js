@@ -177,7 +177,11 @@ export class GraphBackend {
       const j = await r.json();
       return Array.isArray(j.projects) ? j.projects : [];
     } catch (e) {
-      if (e instanceof GraphError && e.status === 404) return [];
+      if (e instanceof GraphError && e.status === 404) {
+        // Create it once so later loads don't 404.
+        this.saveProjects([]).catch(() => {});
+        return [];
+      }
       throw e;
     }
   }

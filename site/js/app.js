@@ -167,27 +167,58 @@ async function start(backend) {
     const [lists, projects] = await Promise.all([backend.lists(), backend.projects().catch(() => [])]);
     S.lists = lists;
     S.projects = projects;
-    const loaded = await Promise.all(lists.map((l) => backend.tasks(l.id).then((t) => [l.id, t])));
-    S.tasks = new Map(loaded);
+    S.tasks = new Map();
     if (backend.kind === 'graph') {
       const acct = auth.account();
       S.user = acct ? acct.name || acct.username : '';
     } else S.user = 'Demo';
+    if (S.view.kind === 'list' && !S.lists.some((l) => l.id === S.view.id)) S.view = { kind: 'today' };
+    await loadAllTasks();
     return true;
   });
   if (!ok) return;
   S.ready = true;
-  if (S.view.kind === 'list' && !S.lists.some((l) => l.id === S.view.id)) S.view = { kind: 'today' };
   render();
+}
+
+// Graph throttles bursts of To Do requests, so lists load a couple at a time,
+// the one on screen first, and the view fills in as each list arrives.
+const LIST_CONCURRENCY = 2;
+let loadGeneration = 0;
+
+async function loadAllTasks() {
+  const gen = ++loadGeneration;
+  const first = [];
+  if (S.view.kind === 'list') first.push(S.view.id);
+  const def = defaultList();
+  if (def) first.push(def.id);
+  const order = [...new Set([...first, ...S.lists.map((l) => l.id)])];
+  const fresh = new Map();
+  let next = 0;
+  let done = 0;
+  const progress = () => { if (order.length > 1 && done < order.length) mount($('view-sub'), `Loading lists ${done} of ${order.length}…`); };
+  const worker = async () => {
+    while (next < order.length) {
+      const id = order[next++];
+      const tasks = await S.backend.tasks(id);
+      if (gen !== loadGeneration) return;
+      fresh.set(id, tasks);
+      S.tasks.set(id, tasks);
+      done++;
+      render();
+      progress();
+    }
+  };
+  progress();
+  await Promise.all(Array.from({ length: Math.min(LIST_CONCURRENCY, order.length) }, worker));
+  if (gen === loadGeneration) S.tasks = fresh;
 }
 
 async function refresh() {
   if (!S.backend) return;
   await guard(async () => {
-    const lists = await S.backend.lists();
-    S.lists = lists;
-    const loaded = await Promise.all(lists.map((l) => S.backend.tasks(l.id).then((t) => [l.id, t])));
-    S.tasks = new Map(loaded);
+    S.lists = await S.backend.lists();
+    await loadAllTasks();
   });
   render();
 }
@@ -441,7 +472,7 @@ async function openDetail(t) {
   renderTasks();
   renderDetail();
   const [results, attachments, links] = await Promise.all([
-    guard(() => S.backend.results(t)),
+    t.meta.results > 0 ? guard(() => S.backend.results(t)) : Promise.resolve([]),
     t.hasAttachments ? guard(() => S.backend.attachments(t)) : Promise.resolve([]),
     guard(() => S.backend.links(t)),
   ]);
