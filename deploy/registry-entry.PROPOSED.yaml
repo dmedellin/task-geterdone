@@ -1,0 +1,62 @@
+# Proposed dmedellin/platform-ops apps/registry.yaml entry. This file in the
+# application repo carries no authority; the platform-ops copy does.
+# private_ipv4 is a proposal and must be checked against the live
+# platform-private-edge network before it is used.
+apps:
+  - tenant_slug: geterdone
+    slug: task-geterdone
+    deployment_state: onboarding-disabled
+    enabled: false
+    source_repository: dmedellin/task-geterdone
+    oci_repository: ghcr.io/dmedellin/task-geterdone
+    project_name: task-geterdone
+    container_name: task-geterdone
+    runner:
+      repository: dmedellin/task-geterdone
+      service: actions.runner.dmedellin-task-geterdone.hetzner-geterdone-task-prod.service
+      labels: [self-hosted, linux, x64, hetzner-prod, task-geterdone]
+    deploy_wrapper: /usr/local/sbin/platform-deploy-static
+    network:
+      class: shared-private-edge
+      internal_port: 8080
+      shared_network: platform-private-edge
+      private_ipv4: 10.89.2.23
+    health:
+      path: /healthz
+      success_status: 200
+      deadline_seconds: 60
+    domains:
+      canonical: task.geterdone.io
+      aliases: []
+      all: [task.geterdone.io]
+    edge:
+      upstream_scheme: http
+      canonical_redirect_status: 308
+      compression: [zstd, gzip]
+      websocket: false
+      headers_profile: app-supplied
+      cache_profile: app-supplied
+      caddy_fragment: /etc/caddy/sites.d/task-geterdone.caddy
+      dns_provider: godaddy
+      tls_mode: caddy-automatic-public
+    persistence:
+      class: stateless
+      migrations: forbidden
+    runtime:
+      user: "1000:1000"
+      read_only_rootfs: true
+      cap_drop: [ALL]
+      no_new_privileges: true
+      tmpfs: ["/tmp:size=16m,mode=1777"]
+      cpus: 0.5
+      memory_limit_mib: 128
+      memory_reservation_mib: 32
+      pids_limit: 128
+      restart: unless-stopped
+    paths:
+      app_root: /srv/apps/task-geterdone
+      audit_path: /var/log/app-platform/task-geterdone
+      minimum_retained_accepted_releases: 2
+    notes:
+      - Static SPA; all user data lives in the user's own Microsoft account (To Do + OneDrive app folder). No server state.
+      - The app sets its own security headers and CSP (deploy/Caddyfile); the host fragment should only reverse-proxy.

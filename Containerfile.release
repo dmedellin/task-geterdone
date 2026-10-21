@@ -1,0 +1,26 @@
+# task-geterdone release image for https://task.geterdone.io
+#
+# Static SPA (hand-written HTML, CSS and ES modules; no bundler, no CDN) served
+# by an in-container Caddy on :8080. TLS is terminated by the host Caddy.
+# Base image pinned by digest, same as learn-geterdone (caddy:2.10.0-alpine).
+FROM docker.io/library/caddy@sha256:f43d8810c944e27e6f7ea80b165de11dbdab16cff15c8a80d83ae3e1a109a35d
+
+LABEL org.opencontainers.image.source="https://github.com/dmedellin/task-geterdone" \
+      org.opencontainers.image.title="Tasks - geterdone.io"
+
+COPY --chmod=0644 deploy/Caddyfile /etc/caddy/Caddyfile
+COPY site/ /srv/
+
+ARG RELEASE_SHA=local
+RUN set -eu; \
+    for f in index.html app.css favicon.svg js/app.js js/auth.js js/callback.js oauth2/spa/callback/index.html; do \
+      test -f "/srv/$f" || { echo "FATAL: missing /srv/$f"; exit 1; }; \
+    done; \
+    printf '%s\n' "$RELEASE_SHA" > /srv/release.txt; \
+    chmod -R a+rX /srv; \
+    caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile; \
+    setcap -r /usr/bin/caddy
+
+USER 1000:1000
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD wget -q -O- http://127.0.0.1:8080/healthz || exit 1

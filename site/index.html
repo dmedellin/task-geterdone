@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>task.geterdone</title>
+  <meta name="description" content="Tasks, projects, goals and a Pomodoro timer on top of Microsoft To Do. Your data stays in your own Microsoft account.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <section id="landing" class="landing" hidden>
+    <div class="landing-card">
+      <div class="brand big"><span class="logo" aria-hidden="true"></span>task<span class="dim">.geterdone</span></div>
+      <p class="lead">Tasks, projects, goals and a Pomodoro timer, on top of Microsoft To Do.</p>
+      <ul class="points">
+        <li>Your tasks stay in your own Microsoft account. They show up in the To Do apps too.</li>
+        <li>Group work into projects and set goals by repetitions, time or quantity.</li>
+        <li>Log what each session produced, with evidence, and watch progress add up.</li>
+        <li>Focus with a Pomodoro timer that logs minutes toward time goals.</li>
+      </ul>
+      <div id="landing-msg"></div>
+      <div class="row center wrap">
+        <button id="signin" class="btn big">Sign in with Microsoft</button>
+        <button id="demo" class="btn big ghost">Try the demo</button>
+      </div>
+      <p class="muted small">Works with personal, work and school Microsoft accounts. The demo keeps data in this browser only.</p>
+    </div>
+  </section>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <button id="menu" class="icon-btn only-mobile" aria-label="Open navigation">
+        <svg viewBox="0 0 24 24" width="20" height="20" class="icon" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="brand"><span class="logo" aria-hidden="true"></span>task<span class="dim">.geterdone</span></div>
+      <input id="search" type="search" placeholder="Search tasks" aria-label="Search tasks">
+      <button id="pomo-chip" class="pomo-chip" aria-haspopup="dialog" aria-expanded="false" aria-controls="pomo-panel">
+        <span id="pomo-phase">Focus</span><span id="pomo-clock">25:00</span>
+      </button>
+      <div id="account" class="account"></div>
+    </header>
+    <div id="scrim" class="scrim"></div>
+    <nav id="nav" class="sidebar" aria-label="Views"></nav>
+    <main class="main">
+      <div class="view-head">
+        <div>
+          <h1 id="view-title">Today</h1>
+          <p id="view-sub" class="muted"></p>
+        </div>
+        <button id="refresh" class="btn small ghost" title="Reload from Microsoft To Do">Refresh</button>
+      </div>
+      <div id="tasks"></div>
+    </main>
+    <aside id="detail" class="detail" aria-label="Task details"></aside>
+    <section id="pomo-panel" class="pomo-panel" role="dialog" aria-label="Pomodoro timer" hidden></section>
+  </div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <noscript><p class="pad">task.geterdone needs JavaScript to talk to Microsoft To Do.</p></noscript>
+</body>
+</html>

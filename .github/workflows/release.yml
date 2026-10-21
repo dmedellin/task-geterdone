@@ -1,0 +1,91 @@
+# Build the image on every push to main, publish it to GHCR by digest, then
+# deploy it through the root-owned platform wrapper on the production host
+# (shared-private-edge; host Caddy terminates TLS for task.geterdone.io).
+# Same release pattern as dmedellin/learn-geterdone.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-task-geterdone
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_SLUG: task-geterdone
+  IMAGE_REPOSITORY: ghcr.io/dmedellin/task-geterdone
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build-and-publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_reference: ${{ steps.ref.outputs.image_reference }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Containerfile.release
+          build-args: RELEASE_SHA=${{ github.sha }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPOSITORY }}:sha-${{ github.sha }}
+            ${{ env.IMAGE_REPOSITORY }}:main
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - id: ref
+        run: echo "image_reference=${IMAGE_REPOSITORY}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  deploy-production:
+    needs: build-and-publish
+    # Off until the host side (runner, wrapper entry, Caddy site, DNS) exists.
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: [self-hosted, linux, x64, hetzner-prod, task-geterdone]
+    environment: production
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy through the root-owned platform boundary
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_IMAGE: ${{ needs.build-and-publish.outputs.image_reference }}
+        run: |
+          set -euo pipefail
+          # The GHCR token goes over stdin, never argv or a log line.
+          printf '%s\n' "$GHCR_TOKEN" | sudo -n /usr/local/sbin/platform-deploy-static \
+            "$APP_SLUG" "$APP_IMAGE" "$GITHUB_SHA" "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Verify the public site serves this release
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            got="$(curl -fsS https://task.geterdone.io/release.txt || true)"
+            [ "$got" = "$GITHUB_SHA" ] && { echo "live: $got"; exit 0; }
+            sleep 2
+          done
+          echo "::error::https://task.geterdone.io/release.txt did not report $GITHUB_SHA"; exit 1

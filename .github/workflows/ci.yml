@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check every module
+        run: for f in site/js/*.js; do node --check "$f"; done
+      - name: Unit tests
+        run: npm test
+      - name: No inline scripts or third-party origins in pages
+        run: |
+          set -euo pipefail
+          if grep -nE '<script(>| [^>]*>[^<])' site/index.html site/oauth2/spa/callback/index.html | grep -v 'type="module" src="/js/'; then
+            echo "::error::Inline script found; the CSP allows script-src 'self' only."; exit 1
+          fi
+          if grep -rnE '(src|href)="https?://' site/ ; then
+            echo "::error::Pages must not load third-party resources."; exit 1
+          fi
+      - name: Container builds and serves
+        run: |
+          set -euo pipefail
+          docker build -f Containerfile.release --build-arg RELEASE_SHA="$GITHUB_SHA" -t task-geterdone:ci .
+          docker run -d --name tg -p 8080:8080 --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp task-geterdone:ci
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          test "$(curl -fsS http://127.0.0.1:8080/release.txt)" = "$GITHUB_SHA"
+          curl -fsS -o /dev/null http://127.0.0.1:8080/
+          curl -fsS -o /dev/null http://127.0.0.1:8080/oauth2/spa/callback/
+          curl -fsSI http://127.0.0.1:8080/ | grep -qi "content-security-policy: default-src 'none'"
